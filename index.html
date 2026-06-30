@@ -171,6 +171,41 @@
     </div>
   </div>
 
+  <!-- Chatbot Widget -->
+  <div class="chatbot-widget" id="chatbot-widget">
+    <!-- Chat Launcher -->
+    <button class="chatbot-launcher" id="chatbot-launcher">
+      <span class="launcher-icon">💬</span>
+      <span class="launcher-text">AI 助手</span>
+    </button>
+
+    <!-- Chat Container -->
+    <div class="chat-container" id="chat-container">
+      <!-- Chat Header -->
+      <div class="chat-header">
+        <div class="chat-bot-profile">
+          <span class="bot-avatar">🤖</span>
+          <div class="bot-info">
+            <span class="bot-name">電影 AI 助手</span>
+            <span class="bot-status">🟢 線上答詢中</span>
+          </div>
+        </div>
+        <button class="chat-close-btn" id="chat-close-btn">&times;</button>
+      </div>
+
+      <!-- Chat Messages Log -->
+      <div class="chat-messages" id="chat-messages">
+        <!-- Messages will be populated dynamically by app.js -->
+      </div>
+
+      <!-- Chat Input Area -->
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="問問我「推薦科幻片」或「評分最高」..." autocomplete="off">
+        <button id="chat-send-btn">發送</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Data & JS Scripts -->
   <script src="data.js"></script>
   <script src="app.js"></script>
