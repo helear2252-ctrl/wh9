@@ -1,641 +1,141 @@
-/* ==========================================
-   DIC Movie Catalog JavaScript Controller
-   ========================================== */
+const appState = { movies: [], filteredMovies: [], activeMovieIndex: 0, activeMovieId: null, activeGenre: 'all', activeRegion: 'all', searchQuery: '', sortMode: 'id-asc', modalOpen: false };
 
-document.addEventListener("DOMContentLoaded", () => {
-  // Application State
-  const state = {
-    movies: [...MOVIE_DATA],
-    searchQuery: "",
-    selectedCategory: "all",
-    selectedRegion: "all",
-    sortBy: "id-asc"
+function normalizeMovie(raw) {
+  const originalUrl = raw.originalUrl || raw.detailUrl || raw.sourceUrl || raw.source_url || raw.url || raw.link || raw.href || raw.crawlerUrl || (raw.id ? `https://ssr1.scrape.center/detail/${raw.id}` : '');
+  const releaseDate = raw.releaseDate || raw.release_date || raw.date || '';
+  const yearMatch = String(raw.year || raw.releaseYear || releaseDate).match(/\d{4}/);
+  const genres = raw.genres || raw.genre || raw.categories || [];
+  return {
+    id: String(raw.id || raw.movie_id || (crypto.randomUUID ? crypto.randomUUID() : Date.now())),
+    title: raw.title || raw.name || raw.zhTitle || raw.chinese_title || 'Untitled',
+    originalTitle: raw.originalTitle || raw.enTitle || raw.subtitle || raw.english_title || '',
+    year: raw.year || raw.releaseYear || (yearMatch ? yearMatch[0] : ''), rating: raw.rating || raw.score || '',
+    duration: raw.duration || raw.runtime || '', region: raw.region || raw.country || raw.area || '', releaseDate,
+    genres: Array.isArray(genres) ? genres : String(genres).split(',').map(v => v.trim()).filter(Boolean),
+    poster: raw.poster || raw.posterUrl || raw.image || raw.cover || '',
+    backdrop: raw.backdrop || raw.backdropUrl || raw.banner || raw.poster || raw.image || raw.cover || '',
+    description: raw.description || raw.overview || raw.summary || '', originalUrl, sourceName: raw.sourceName || 'Scrape Center', stars: raw.stars || ''
   };
+}
 
-  // DOM Elements
-  const totalCountEl = document.getElementById("stat-total");
-  const avgScoreEl = document.getElementById("stat-avg-score");
-  const totalCatsEl = document.getElementById("stat-categories");
-  const totalRegionsEl = document.getElementById("stat-regions");
-  
-  const searchInput = document.getElementById("search-input");
-  const sortSelect = document.getElementById("sort-select");
-  const categoryTagsContainer = document.getElementById("category-tags");
-  const regionTagsContainer = document.getElementById("region-tags");
-  
-  const moviesGrid = document.getElementById("movies-grid");
-  const catalogCountText = document.getElementById("catalog-count-text");
-  const noResultsMsg = document.getElementById("no-results-msg");
-  
-  // Modal Elements
-  const detailModal = document.getElementById("detail-modal");
-  const modalCloseBtn = document.getElementById("modal-close-btn");
-  const modalCover = document.getElementById("modal-cover");
-  const modalScore = document.getElementById("modal-score");
-  const modalTitleCn = document.getElementById("modal-title-cn");
-  const modalTitleEn = document.getElementById("modal-title-en");
-  const modalId = document.getElementById("modal-id");
-  const modalDuration = document.getElementById("modal-duration");
-  const modalRegion = document.getElementById("modal-region");
-  const modalReleaseDate = document.getElementById("modal-release-date");
-  const modalCategories = document.getElementById("modal-categories");
-  const modalStarsContainer = document.getElementById("modal-stars-container");
-  const modalLinkBtn = document.getElementById("modal-link-btn");
+const $ = selector => document.querySelector(selector);
+const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' }[char]));
+const cleanDuration = value => String(value || '').replace(/\s*分鐘\s*$/,'');
 
-  // Initialize Web App
-  init();
+function updateStats() {
+  const genres = new Set(appState.movies.flatMap(movie => movie.genres));
+  const regions = new Set(appState.movies.flatMap(movie => movie.region.split(/[、,，/]/).map(v => v.trim()).filter(Boolean)));
+  $('[data-stat-total]').textContent = appState.movies.length;
+  $('[data-stat-average]').textContent = (appState.movies.reduce((sum,movie) => sum + Number(movie.rating || 0), 0) / appState.movies.length).toFixed(1);
+  $('[data-stat-genres]').textContent = genres.size; $('[data-stat-regions]').textContent = regions.size;
+}
 
-  function init() {
-    calculateStats();
-    buildFilterTags();
-    registerEvents();
-    render();
-  }
-
-  // 1. Calculate & Render Dashboard Stats
-  function calculateStats() {
-    totalCountEl.textContent = state.movies.length;
-    
-    // Avg Score
-    const totalScore = state.movies.reduce((sum, m) => sum + m.score, 0);
-    const avgScore = state.movies.length > 0 ? (totalScore / state.movies.length).toFixed(2) : "0.00";
-    avgScoreEl.textContent = avgScore;
-
-    // Distinct Categories
-    const categoriesSet = new Set();
-    state.movies.forEach(m => m.categories.forEach(c => categoriesSet.add(c)));
-    totalCatsEl.textContent = categoriesSet.size;
-
-    // Distinct Regions
-    const regionsSet = new Set();
-    state.movies.forEach(m => {
-      if (m.region) {
-        // Handle split regions like "中国内地、中国香港" or "美国、英国"
-        const parts = m.region.split(/[、\/,]/);
-        parts.forEach(p => regionsSet.add(p.trim()));
-      }
-    });
-    totalRegionsEl.textContent = regionsSet.size;
-  }
-
-  // 2. Dynamically Generate Category and Region Tags
-  function buildFilterTags() {
-    // Categories
-    const categoriesMap = {};
-    state.movies.forEach(m => {
-      m.categories.forEach(c => {
-        categoriesMap[c] = (categoriesMap[c] || 0) + 1;
-      });
-    });
-    
-    // Sort categories by frequency
-    const sortedCategories = Object.keys(categoriesMap).sort((a, b) => categoriesMap[b] - categoriesMap[a]);
-    
-    sortedCategories.forEach(cat => {
-      const btn = document.createElement("button");
-      btn.className = "tag-btn";
-      btn.dataset.category = cat;
-      btn.textContent = `${cat} (${categoriesMap[cat]})`;
-      categoryTagsContainer.appendChild(btn);
-    });
-
-    // Regions
-    const regionsMap = {};
-    state.movies.forEach(m => {
-      if (m.region) {
-        const parts = m.region.split(/[、\/,]/);
-        parts.forEach(p => {
-          const r = p.trim();
-          if (r) {
-            regionsMap[r] = (regionsMap[r] || 0) + 1;
-          }
-        });
-      }
-    });
-
-    const sortedRegions = Object.keys(regionsMap).sort((a, b) => regionsMap[b] - regionsMap[a]);
-    
-    sortedRegions.forEach(reg => {
-      const btn = document.createElement("button");
-      btn.className = "tag-btn";
-      btn.dataset.region = reg;
-      btn.textContent = `${reg} (${regionsMap[reg]})`;
-      regionTagsContainer.appendChild(btn);
-    });
-  }
-
-  // 3. Register Event Listeners
-  function registerEvents() {
-    // Search input handler with input event (instant)
-    searchInput.addEventListener("input", (e) => {
-      state.searchQuery = e.target.value.trim().toLowerCase();
-      render();
-    });
-
-    // Sort select handler
-    sortSelect.addEventListener("change", (e) => {
-      state.sortBy = e.target.value;
-      render();
-    });
-
-    // Category filter click delegation
-    categoryTagsContainer.addEventListener("click", (e) => {
-      const btn = e.target.closest(".tag-btn");
-      if (!btn) return;
-      
-      categoryTagsContainer.querySelectorAll(".tag-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      
-      state.selectedCategory = btn.dataset.category;
-      render();
-    });
-
-    // Region filter click delegation
-    regionTagsContainer.addEventListener("click", (e) => {
-      const btn = e.target.closest(".tag-btn");
-      if (!btn) return;
-      
-      regionTagsContainer.querySelectorAll(".tag-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      
-      state.selectedRegion = btn.dataset.region;
-      render();
-    });
-
-    // Modal Close
-    modalCloseBtn.addEventListener("click", closeModal);
-    detailModal.addEventListener("click", (e) => {
-      if (e.target === detailModal) closeModal();
-    });
-
-    // Keyboard support for Modal (Escape key)
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && detailModal.classList.contains("active")) {
-        closeModal();
-      }
-    });
-  }
-
-  // 4. Combined Filtering & Sorting Logic
-  function render() {
-    // Filter
-    let filteredMovies = state.movies.filter(movie => {
-      // Search matching
-      const matchesSearch = 
-        movie.chinese_title.toLowerCase().includes(state.searchQuery) ||
-        movie.english_title.toLowerCase().includes(state.searchQuery);
-        
-      // Category matching
-      const matchesCategory = 
-        state.selectedCategory === "all" ||
-        movie.categories.includes(state.selectedCategory);
-        
-      // Region matching
-      const matchesRegion = 
-        state.selectedRegion === "all" ||
-        (movie.region && movie.region.includes(state.selectedRegion));
-        
-      return matchesSearch && matchesCategory && matchesRegion;
-    });
-
-    // Sort
-    filteredMovies.sort((a, b) => {
-      if (state.sortBy === "id-asc") {
-        return a.id - b.id;
-      } else if (state.sortBy === "score-desc") {
-        return b.score - a.score;
-      } else if (state.sortBy === "duration-desc") {
-        return getMinutes(b.duration) - getMinutes(a.duration);
-      } else if (state.sortBy === "duration-asc") {
-        return getMinutes(a.duration) - getMinutes(b.duration);
-      } else if (state.sortBy === "date-desc") {
-        return getReleaseTimestamp(b.release_date) - getReleaseTimestamp(a.release_date);
-      } else if (state.sortBy === "date-asc") {
-        return getReleaseTimestamp(a.release_date) - getReleaseTimestamp(b.release_date);
-      }
-      return 0;
-    });
-
-    // Render grid count
-    catalogCountText.textContent = `顯示 ${filteredMovies.length} 部電影`;
-
-    // Empty grid and populate
-    moviesGrid.innerHTML = "";
-    if (filteredMovies.length === 0) {
-      noResultsMsg.style.display = "block";
-    } else {
-      noResultsMsg.style.display = "none";
-      filteredMovies.forEach(movie => {
-        moviesGrid.appendChild(createMovieCard(movie));
-      });
-    }
-  }
-
-  // Helper: Create single movie card element
-  function createMovieCard(movie) {
-    const card = document.createElement("div");
-    card.className = "movie-card";
-    
-    // categories list
-    const tagsHtml = movie.categories.slice(0, 3).map(cat => `<span class="card-tag">${cat}</span>`).join("");
-    
-    card.innerHTML = `
-      <div class="movie-cover-container">
-        <img class="movie-cover" src="${movie.cover}" alt="${movie.chinese_title} Cover" loading="lazy">
-        <div class="movie-score-badge">
-          ★ ${movie.score.toFixed(1)}
-        </div>
-      </div>
-      <div class="movie-card-content">
-        <h3 class="movie-card-title">${movie.chinese_title}</h3>
-        <div class="movie-card-meta">
-          <span>${movie.region || "未知"}</span>
-          <span class="meta-split">/</span>
-          <span>${movie.duration || "未知"}</span>
-        </div>
-        <div class="movie-card-tags">
-          ${tagsHtml}
-        </div>
-      </div>
-    `;
-
-    // Click handler to open modal
-    card.addEventListener("click", () => openModal(movie));
-    return card;
-  }
-
-  // 5. Modal Operations
-  function openModal(movie) {
-    modalCover.src = movie.cover;
-    modalCover.alt = movie.chinese_title;
-    modalScore.textContent = movie.score.toFixed(1);
-    modalTitleCn.textContent = movie.chinese_title;
-    modalTitleEn.textContent = movie.english_title;
-    modalId.textContent = movie.id;
-    modalDuration.textContent = movie.duration || "未知";
-    modalRegion.textContent = movie.region || "未知";
-    modalReleaseDate.textContent = movie.release_date || "暂无数据";
-    modalLinkBtn.href = `https://ssr1.scrape.center/detail/${movie.id}`;
-    
-    // modal tags
-    modalCategories.innerHTML = movie.categories.map(cat => `<span class="modal-tag">${cat}</span>`).join("");
-    
-    // modal stars gradient fill
-    modalStarsContainer.innerHTML = renderRatingStars(movie.stars);
-
-    // Show modal
-    detailModal.classList.add("active");
-    document.body.style.overflow = "hidden"; // disable body scrolling
-  }
-
-  function closeModal() {
-    detailModal.classList.remove("active");
-    document.body.style.overflow = ""; // restore body scrolling
-  }
-
-  // Helper: Render precise gradient rating stars
-  function renderRatingStars(starsValue) {
-    let html = '';
-    for (let i = 1; i <= 5; i++) {
-      let pct = 0;
-      if (starsValue >= i) {
-        pct = 100;
-      } else if (starsValue > i - 1) {
-        pct = Math.round((starsValue - (i - 1)) * 100);
-      }
-      // Unique random ID for linear gradient
-      const gradId = `grad-${Math.random().toString(36).substr(2, 9)}`;
-      html += `
-        <svg style="display: inline-block; width: 22px; height: 22px; vertical-align: middle; margin-right: 4px;" viewBox="0 0 24 24">
-          <defs>
-            <linearGradient id="${gradId}">
-              <stop offset="${pct}%" stop-color="#f59e0b" />
-              <stop offset="${pct}%" stop-color="#e2e8f0" />
-            </linearGradient>
-          </defs>
-          <path fill="url(#${gradId})" d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z"/>
-        </svg>
-      `;
-    }
-    return html + ` <span style="font-size: 0.95rem; font-weight: 600; color: #475569; margin-left: 0.6rem; vertical-align: middle;">${(starsValue * 2).toFixed(1)} / 10 星級</span>`;
-  }
-
-
-  // Helper: Extract minutes integer from duration string ("171 分钟" -> 171)
-  function getMinutes(durationStr) {
-    if (!durationStr) return 0;
-    const match = durationStr.match(/(\d+)/);
-    return match ? parseInt(match[1]) : 0;
-  }
-
-  // Helper: Extract timestamp from release date string ("1993-07-26 上映" -> timestamp)
-  function getReleaseTimestamp(dateStr) {
-    if (!dateStr) return 0;
-    const match = dateStr.match(/(\d{4}-\d{2}-\d{2})/);
-    return match ? new Date(match[1]).getTime() : 0;
-  }
-
-  // ==========================================
-  // Chatbot Controller Logic
-  // ==========================================
-  const chatWidget = document.getElementById("chatbot-widget");
-  const chatLauncher = document.getElementById("chatbot-launcher");
-  const chatContainer = document.getElementById("chat-container");
-  const chatCloseBtn = document.getElementById("chat-close-btn");
-  const chatMessages = document.getElementById("chat-messages");
-  const chatInput = document.getElementById("chat-input");
-  const chatSendBtn = document.getElementById("chat-send-btn");
-
-  let isFirstOpen = true;
-
-  // Toggle Chat View
-  chatLauncher.addEventListener("click", () => {
-    chatWidget.classList.add("active");
-    if (isFirstOpen) {
-      showWelcomeMessage();
-      isFirstOpen = false;
-    }
-    chatInput.focus();
+function renderFilters() {
+  const genreCounts = new Map(), regionCounts = new Map();
+  appState.movies.forEach(movie => {
+    movie.genres.forEach(genre => genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1));
+    movie.region.split(/[、,，/]/).map(v => v.trim()).filter(Boolean).forEach(region => regionCounts.set(region, (regionCounts.get(region) || 0) + 1));
   });
+  const chip = (type, value, count) => `<button data-filter-type="${type}" data-filter-value="${escapeHtml(value)}" class="${(type === 'genre' ? appState.activeGenre : appState.activeRegion) === value ? 'is-active' : ''}">${value === 'all' ? '全部' : escapeHtml(value)}<span>${count}</span></button>`;
+  $('[data-genre-filters]').innerHTML = chip('genre','all',appState.movies.length) + [...genreCounts].sort((a,b) => b[1]-a[1]).map(([v,c]) => chip('genre',v,c)).join('');
+  $('[data-region-filters]').innerHTML = chip('region','all',appState.movies.length) + [...regionCounts].sort((a,b) => b[1]-a[1]).map(([v,c]) => chip('region',v,c)).join('');
+}
 
-  chatCloseBtn.addEventListener("click", () => {
-    chatWidget.classList.remove("active");
-  });
+function getCircularOffset(index, activeIndex, total) { let offset = index - activeIndex; if (offset > total / 2) offset -= total; if (offset < -total / 2) offset += total; return offset; }
 
-  // Handle Send Messages
-  chatSendBtn.addEventListener("click", handleUserMessage);
-  chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      handleUserMessage();
-    }
-  });
+function renderHeroCarousel() {
+  const root = $('[data-hero-carousel]'), dots = $('[data-hero-dots]'), movies = appState.filteredMovies.slice(0,7);
+  if (!movies.length) { root.innerHTML = ''; dots.innerHTML = ''; updateHeroContent(null); return; }
+  if (appState.activeMovieIndex >= movies.length) appState.activeMovieIndex = 0;
+  root.innerHTML = movies.map((movie,index) => `<button class="hero-poster-card offset-${getCircularOffset(index,appState.activeMovieIndex,movies.length)}" data-hero-index="${index}" data-movie-id="${movie.id}" aria-label="${escapeHtml(movie.title)}"><img src="${escapeHtml(movie.poster)}" alt="${escapeHtml(movie.title)}"><span class="hero-card-title">${escapeHtml(movie.title)}</span></button>`).join('');
+  dots.innerHTML = movies.map((movie,index) => `<button class="hero-dot ${index === appState.activeMovieIndex ? 'is-active' : ''}" data-hero-index="${index}" aria-label="切換至 ${escapeHtml(movie.title)}"></button>`).join('');
+  updateHeroContent(movies[appState.activeMovieIndex]);
+}
 
-  // Welcome Response
-  function showWelcomeMessage() {
-    appendBotMessage(
-      "您好！我是您的<b>電影 AI 助手</b>。我可以幫您查詢電影、推薦高分佳作或是篩選各種類型的影片。<br><br>您可以直接問我，或者點擊下方按鈕進行查詢：",
-      [
-        { text: "🎬 隨便推薦一部", query: "隨便推薦一部" },
-        { text: "⭐ 評分最高", query: "評分最高" },
-        { text: "🚀 經典科幻片", query: "科幻片" },
-        { text: "❤️ 浪漫愛情片", query: "愛情片" }
-      ]
-    );
-  }
+function setActiveHeroIndex(index) {
+  const movies = appState.filteredMovies.slice(0,7); if (!movies.length) return;
+  appState.activeMovieIndex = ((index % movies.length) + movies.length) % movies.length; appState.activeMovieId = movies[appState.activeMovieIndex].id;
+  renderHeroCarousel(); updateStreamBot(movies[appState.activeMovieIndex]); updateTopPicksActive(appState.activeMovieId);
+  if (window.gsap) gsap.fromTo('.hero-copy > *',{opacity:0,y:14},{opacity:1,y:0,duration:.45,ease:'power3.out',stagger:.04});
+}
 
-  // Handle input and route intent
-  function handleUserMessage() {
-    const text = chatInput.value.trim();
-    if (!text) return;
+function updateHeroContent(movie) {
+  if (!movie) { $('[data-hero-title]').textContent='找不到電影'; $('[data-hero-original]').textContent='請調整搜尋或篩選條件'; return; }
+  appState.activeMovieId = movie.id;
+  $('[data-hero-title]').textContent = movie.title; $('[data-hero-original]').textContent = movie.originalTitle;
+  $('[data-hero-rating]').textContent = `★ ${movie.rating || '--'}`; $('[data-hero-year]').textContent = movie.year || '';
+  $('[data-hero-genre]').textContent = movie.genres[0] || ''; $('[data-hero-duration]').textContent = movie.duration || '';
+  $('[data-hero-description]').textContent = movie.description || `${movie.title} 收錄於 DIC Scrape Center 完整電影資料庫，點擊海報查看完整資訊與原始資料來源。`;
+  updateStreamBot(movie); updateTopPicksActive(movie.id);
+}
 
-    // Append User message
-    appendUserMessage(text);
-    chatInput.value = "";
+function renderTopPicks() {
+  const picks = [...appState.movies].sort((a,b) => Number(b.rating)-Number(a.rating) || Number(a.id)-Number(b.id)).slice(0,4);
+  $('[data-top-picks]').innerHTML = picks.map(movie => `<button class="top-pick-card" data-movie-id="${movie.id}"><img src="${escapeHtml(movie.poster)}" alt=""><span><strong>${escapeHtml(movie.title)}</strong><small>${escapeHtml(movie.year)} · <em>★</em> ${escapeHtml(movie.rating || '--')}</small></span></button>`).join('');
+}
+function updateTopPicksActive(id) { document.querySelectorAll('.top-pick-card').forEach(card => card.classList.toggle('is-active',card.dataset.movieId === id)); }
 
-    // Show Typing Indicator
-    const loader = appendTypingIndicator();
+function renderContinueWatching() {
+  $('[data-continue-watching]').innerHTML = appState.filteredMovies.slice(0,4).map((movie,index) => `<button class="continue-card" data-movie-id="${movie.id}"><span class="continue-image"><img src="${escapeHtml(movie.backdrop)}" alt="${escapeHtml(movie.title)}"><i><svg><use href="#i-play"/></svg></i><b style="--watched:${[38,55,69,82][index]}%"></b></span><strong>${escapeHtml(movie.title)}</strong><small>${escapeHtml(movie.originalTitle)}</small></button>`).join('');
+}
 
-    // Delay response to simulate processing
-    setTimeout(() => {
-      removeTypingIndicator(loader);
-      processBotResponse(text);
-    }, 600);
-  }
+function movieCard(movie) {
+  return `<article class="movie-card" data-movie-id="${movie.id}" tabindex="0" role="button" aria-label="查看 ${escapeHtml(movie.title)} 詳細資料"><div class="poster-wrap"><img src="${escapeHtml(movie.poster)}" alt="${escapeHtml(movie.title)}" loading="lazy"><span class="score-badge">★ ${escapeHtml(movie.rating || '--')}</span><span class="card-play"><svg><use href="#i-play"/></svg></span></div><div class="movie-card-body"><h3>${escapeHtml(movie.title)}</h3><p>${escapeHtml(movie.originalTitle)}</p><div class="card-meta"><span>${escapeHtml(movie.region || '地區未提供')}</span><i></i><span>${escapeHtml(movie.duration || '時長未提供')}</span></div><div class="card-tags">${movie.genres.slice(0,3).map(genre => `<span>${escapeHtml(genre)}</span>`).join('')}</div></div></article>`;
+}
 
-  // Append user bubble to messages log
-  function appendUserMessage(text) {
-    const bubble = document.createElement("div");
-    bubble.className = "message user";
-    bubble.textContent = text;
-    chatMessages.appendChild(bubble);
-    scrollChatBottom();
-  }
+function renderAllMovies() {
+  const root = $('[data-movies-grid]'); root.innerHTML = appState.filteredMovies.map(movieCard).join('');
+  $('[data-result-count]').textContent = `顯示 ${appState.filteredMovies.length} 部電影`;
+  $('[data-empty]').hidden = appState.filteredMovies.length > 0;
+}
+function renderTrendingMovies(){ renderAllMovies(); }
 
-  // Append bot bubble to messages log
-  function appendBotMessage(htmlContent, chips = [], moviesList = []) {
-    const bubble = document.createElement("div");
-    bubble.className = "message bot";
-    
-    // Content text
-    let innerHtml = `<div>${htmlContent}</div>`;
+function updateFilterActive() {
+  document.querySelectorAll('[data-filter-value]').forEach(button => button.classList.toggle('is-active', button.dataset.filterValue === (button.dataset.filterType === 'genre' ? appState.activeGenre : appState.activeRegion)));
+}
 
-    // Embedded movie cards
-    if (moviesList.length > 0) {
-      const cardsHtml = moviesList.map(movie => `
-        <a href="#" class="chat-movie-card" data-id="${movie.id}">
-          <img class="chat-movie-cover" src="${movie.cover}" alt="${movie.chinese_title}">
-          <div class="chat-movie-info">
-            <span class="chat-movie-title">${movie.chinese_title}</span>
-            <span class="chat-movie-meta">${movie.region || "未知"} / ${movie.duration || "未知"}</span>
-            <span class="chat-movie-score">★ ${movie.score.toFixed(1)}</span>
-          </div>
-        </a>
-      `).join("");
-      innerHtml += `<div class="chat-movies-list">${cardsHtml}</div>`;
-    }
+function applyFilters() {
+  let result = [...appState.movies]; const query = appState.searchQuery.toLowerCase();
+  if (query) result = result.filter(movie => movie.title.toLowerCase().includes(query) || movie.originalTitle.toLowerCase().includes(query));
+  if (appState.activeGenre !== 'all') result = result.filter(movie => movie.genres.includes(appState.activeGenre));
+  if (appState.activeRegion !== 'all') result = result.filter(movie => movie.region.split(/[、,，/]/).map(v=>v.trim()).includes(appState.activeRegion));
+  result.sort((a,b) => appState.sortMode === 'id-desc' ? Number(b.id)-Number(a.id) : appState.sortMode === 'rating-desc' ? Number(b.rating)-Number(a.rating) : appState.sortMode === 'rating-asc' ? Number(a.rating)-Number(b.rating) : Number(a.id)-Number(b.id));
+  appState.filteredMovies = result; appState.activeMovieIndex = 0; appState.activeMovieId = result[0]?.id || null;
+  renderHeroCarousel(); renderContinueWatching(); renderTrendingMovies(); updateFilterActive(); animateMovieCards();
+}
 
-    // Recommendation suggestion chips
-    if (chips.length > 0) {
-      const chipsHtml = chips.map(c => `
-        <button class="chip-btn" data-query="${c.query}">${c.text}</button>
-      `).join("");
-      innerHtml += `<div class="suggestion-chips">${chipsHtml}</div>`;
-    }
+function openMovieModal(movieId) {
+  const movie = appState.movies.find(item => item.id === String(movieId)); if (!movie) return;
+  let modal = $('[data-movie-modal]'); if (!modal) { modal=document.createElement('div'); modal.className='movie-modal-root'; modal.dataset.movieModal='true'; document.body.appendChild(modal); }
+  modal.innerHTML = `<div class="movie-modal-backdrop" data-close-modal></div><section class="movie-modal-card glass-workbench" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button class="movie-modal-close" data-close-modal aria-label="關閉">×</button><div class="movie-modal-poster"><img src="${escapeHtml(movie.poster)}" alt="${escapeHtml(movie.title)}"><div class="modal-score">${escapeHtml(movie.rating || '--')}</div></div><div class="movie-modal-info"><div class="modal-kicker">${escapeHtml(movie.sourceName)}</div><h2 id="modal-title">${escapeHtml(movie.title)}</h2><p class="modal-en-title">${escapeHtml(movie.originalTitle)}</p><div class="modal-grid"><span><small>ID</small>${escapeHtml(movie.id)}</span><span><small>時長</small>${escapeHtml(movie.duration || '--')}</span><span><small>地區</small>${escapeHtml(movie.region || '--')}</span><span><small>上映日期</small>${escapeHtml(movie.releaseDate || '--')}</span></div><div class="modal-tags">${movie.genres.map(g=>`<span>${escapeHtml(g)}</span>`).join('')}</div><div class="modal-rating"><span>★★★★★</span><strong>${escapeHtml(movie.rating || '--')} / 10 星級</strong></div><p class="modal-desc">${escapeHtml(movie.description || `${movie.title} 的完整電影資料來自 Scrape Center。`)}</p><div class="modal-actions"><button class="primary-action" data-open-original="${movie.id}" ${movie.originalUrl?'':'disabled'}>${movie.originalUrl?'前往 Scrape Center 詳情頁':'來源未提供'}</button><button class="secondary-action" data-close-modal>返回</button></div><div class="modal-source-url">${escapeHtml(movie.originalUrl || '來源未提供')}</div></div></section>`;
+  document.body.classList.add('modal-open'); appState.modalOpen=true; $('.movie-modal-close').focus();
+  if(window.gsap){gsap.fromTo('.movie-modal-backdrop',{opacity:0},{opacity:1,duration:.25});gsap.fromTo('.movie-modal-card',{opacity:0,y:30,scale:.96},{opacity:1,y:0,scale:1,duration:.55,ease:'power4.out'});}
+}
 
-    bubble.innerHTML = innerHtml;
-    chatMessages.appendChild(bubble);
+function openOriginal(movieId) { const movie=appState.movies.find(item=>item.id===String(movieId)); if(!movie?.originalUrl){console.warn('來源未提供',movieId);return;} window.open(movie.originalUrl,'_blank','noopener,noreferrer'); }
+function closeMovieModal(){const modal=$('[data-movie-modal]');if(!modal)return;const remove=()=>modal.remove();if(window.gsap){gsap.to('.movie-modal-card',{opacity:0,y:18,scale:.97,duration:.22,ease:'power2.in',onComplete:remove});gsap.to('.movie-modal-backdrop',{opacity:0,duration:.2});}else remove();document.body.classList.remove('modal-open');appState.modalOpen=false;}
 
-    // Event listener for suggestion chips
-    bubble.querySelectorAll(".chip-btn").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        chatInput.value = e.target.dataset.query;
-        handleUserMessage();
-      });
-    });
+function updateStreamBot(movie){$('[data-bot-current-title]').textContent=movie?.title||'尚未選擇電影';$('[data-bot-current-source]').textContent=movie?.sourceName||'Scrape Center';const open=$('[data-bot-open-original]');if(movie){open.dataset.openOriginal=movie.id;open.disabled=!movie.originalUrl;}}
+function animateMovieCards(){if(window.gsap&&!matchMedia('(prefers-reduced-motion: reduce)').matches)gsap.fromTo('.movie-card',{opacity:0,y:22,scale:.96},{opacity:1,y:0,scale:1,duration:.55,ease:'power3.out',stagger:.015});}
+function initMotion(){if(!window.gsap||matchMedia('(prefers-reduced-motion: reduce)').matches)return;gsap.fromTo('.sidebar,.topbar,.stream-hero,.right-panel,.filter-panel',{opacity:0,y:24,filter:'blur(10px)'},{opacity:1,y:0,filter:'blur(0)',duration:.8,ease:'power3.out',stagger:.07});gsap.to('.right-panel',{x:6,duration:3,ease:'sine.inOut',repeat:-1,yoyo:true});animateMovieCards();}
 
-    // Event listener for movie preview cards
-    bubble.querySelectorAll(".chat-movie-card").forEach(card => {
-      card.addEventListener("click", (e) => {
-        e.preventDefault();
-        const mId = parseInt(card.dataset.id);
-        const movieObj = MOVIE_DATA.find(m => m.id === mId);
-        if (movieObj) {
-          openModal(movieObj);
-        }
-      });
-    });
+document.addEventListener('click',event=>{
+  const original=event.target.closest('[data-open-original]');if(original){event.preventDefault();if(!original.disabled)openOriginal(original.dataset.openOriginal);return;}
+  const close=event.target.closest('[data-close-modal]');if(close){event.preventDefault();closeMovieModal();return;}
+  const active=event.target.closest('[data-open-active-modal]');if(active){event.preventDefault();if(appState.activeMovieId)openMovieModal(appState.activeMovieId);return;}
+  const step=event.target.closest('[data-carousel-step]');if(step){setActiveHeroIndex(appState.activeMovieIndex+Number(step.dataset.carouselStep));return;}
+  const hero=event.target.closest('[data-hero-index]');if(hero){event.preventDefault();const index=Number(hero.dataset.heroIndex);if(hero.closest('[data-hero-carousel]')&&index===appState.activeMovieIndex)openMovieModal(hero.dataset.movieId);else setActiveHeroIndex(index);return;}
+  const filter=event.target.closest('[data-filter-value]');if(filter){const type=filter.dataset.filterType,value=filter.dataset.filterValue;if(type==='genre')appState.activeGenre=value;if(type==='region')appState.activeRegion=value;applyFilters();return;}
+  const add=event.target.closest('[data-add-list]');if(add){add.classList.toggle('is-saved');add.innerHTML=add.classList.contains('is-saved')?'✓ 已加入 My List':'<svg><use href="#i-plus"/></svg>My List';return;}
+  const bot=event.target.closest('[data-bot-action]');if(bot){const movie=appState.movies.find(item=>item.id===appState.activeMovieId);const replies={similar:`已依照《${movie?.title||''}》的類型找到相似電影。`,genre:`目前類型：${movie?.genres.join('、')||'尚未選擇'}。`,trending:`目前共收錄 ${appState.movies.length} 部電影，最高評分 ${Math.max(...appState.movies.map(m=>Number(m.rating)))}。`};$('[data-bot-reply]').textContent=replies[bot.dataset.botAction];return;}
+  const card=event.target.closest('[data-movie-id]');if(card){event.preventDefault();openMovieModal(card.dataset.movieId);}
+});
 
-    scrollChatBottom();
-  }
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&appState.modalOpen)closeMovieModal();const card=event.target.closest('.movie-card');if(card&&(event.key==='Enter'||event.key===' ')){event.preventDefault();openMovieModal(card.dataset.movieId);}});
 
-  // Scroll chat scroll area to bottom
-  function scrollChatBottom() {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-  }
-
-  // Typing indicators loader
-  function appendTypingIndicator() {
-    const bubble = document.createElement("div");
-    bubble.className = "message bot typing-indicator-bubble";
-    bubble.innerHTML = `
-      <div class="typing-indicator">
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-        <div class="typing-dot"></div>
-      </div>
-    `;
-    chatMessages.appendChild(bubble);
-    scrollChatBottom();
-    return bubble;
-  }
-
-  function removeTypingIndicator(element) {
-    if (element && element.parentNode) {
-      element.parentNode.removeChild(element);
-    }
-  }
-
-  // Core Conversation Engine
-  function processBotResponse(query) {
-    const q = query.toLowerCase();
-
-    // Intent: Help / Hello
-    if (q.includes("你好") || q.includes("hello") || q.includes("hi") || q.includes("你能做") || q.includes("功能") || q.includes("助手")) {
-      appendBotMessage(
-        "您好！我是電影助理，我可以幫您：<br>1. <b>推薦特定類型電影</b> (如問「推薦科幻片」、「有哪些愛情片」)<br>2. <b>尋找高分電影</b> (如問「評分最高」或「推薦經典高分」)<br>3. <b>隨機抽取電影</b> (如問「隨便推薦一部」、「抽一個」)<br>4. <b>查詢電影詳情</b> (輸入電影名稱即可，如「霸王別姬」)",
-        [
-          { text: "🎬 隨便推薦一部", query: "隨便推薦" },
-          { text: "⭐ 評分最高", query: "評分最高" }
-        ]
-      );
-      return;
-    }
-
-    // Intent: Random Movie
-    if (q.includes("隨便") || q.includes("抽一") || q.includes("無聊") || q.includes("推薦一個") || q.includes("推薦一部")) {
-      const randomIdx = Math.floor(Math.random() * MOVIE_DATA.length);
-      const movie = MOVIE_DATA[randomIdx];
-      appendBotMessage(
-        `為您抽中了一部隨機電影！快來看看是不是您喜歡的類型：<br>👉 <b>${movie.chinese_title}</b> (${movie.score.toFixed(1)}分)`,
-        [
-          { text: "🎲 再抽一部", query: "隨便推薦" },
-          { text: "⭐ 評分最高", query: "評分最高" }
-        ],
-        [movie]
-      );
-      return;
-    }
-
-    // Intent: Top Rated Movies
-    if (q.includes("最高分") || q.includes("評分最高") || q.includes("高分") || q.includes("好看") || q.includes("經典") || q.includes("評分高")) {
-      // Sort copy by rating descending
-      const sorted = [...MOVIE_DATA].sort((a, b) => b.score - a.score);
-      const top5 = sorted.slice(0, 5);
-      appendBotMessage(
-        "為您推薦評分最高的 5 部經典電影：",
-        [
-          { text: "🎬 隨便推薦一部", query: "隨便推薦" },
-          { text: "🚀 來部科幻片", query: "科幻片" }
-        ],
-        top5
-      );
-      return;
-    }
-
-    // Intent: Genre Category Recommendations
-    const genres = [
-      "剧情", "爱情", "动作", "喜剧", "犯罪", "冒险", "科幻", "战争", 
-      "奇幻", "悬疑", "惊悚", "动画", "纪录片", "家庭", "历史", "灾难", "歌舞"
-    ];
-    
-    let matchedGenre = "";
-    for (const g of genres) {
-      if (q.includes(g)) {
-        matchedGenre = g;
-        break;
-      }
-    }
-
-    if (matchedGenre) {
-      const filtered = MOVIE_DATA.filter(m => m.categories.includes(matchedGenre));
-      const list = filtered.slice(0, 4); // return top 4 matching
-      appendBotMessage(
-        `為您篩選出以下 <b>${matchedGenre}</b> 類型的熱門電影 (共 ${filtered.length} 部)：`,
-        [
-          { text: "🎲 隨便推薦一部", query: "隨便推薦" },
-          { text: "⭐ 評分最高", query: "評分最高" }
-        ],
-        list
-      );
-      return;
-    }
-
-    // Intent: Country / Region Searches
-    const regions = [
-      { name: "美國", key: "美国" },
-      { name: "日本", key: "日本" },
-      { name: "法國", key: "法国" },
-      { name: "韓國", key: "韩国" },
-      { name: "中國", key: "中国" },
-      { name: "香港", key: "香港" },
-      { name: "台灣", key: "台湾" },
-      { name: "義大利", key: "意大利" },
-      { name: "泰國", key: "泰国" }
-    ];
-
-    let matchedRegionKey = "";
-    let matchedRegionName = "";
-    for (const r of regions) {
-      if (q.includes(r.name) || q.includes(r.key)) {
-        matchedRegionKey = r.key;
-        matchedRegionName = r.name;
-        break;
-      }
-    }
-
-    if (matchedRegionKey) {
-      const filtered = MOVIE_DATA.filter(m => m.region && m.region.includes(matchedRegionKey));
-      const list = filtered.slice(0, 4);
-      appendBotMessage(
-        `為您篩選出以下 <b>${matchedRegionName}</b> 的熱門電影 (共 ${filtered.length} 部)：`,
-        [
-          { text: "🎲 隨便推薦一部", query: "隨便推薦" },
-          { text: "⭐ 評分最高", query: "評分最高" }
-        ],
-        list
-      );
-      return;
-    }
-
-    // Intent: Movie Name Specific Search
-    // Check if user is typing a movie title in MOVIE_DATA
-    const matchedMovies = MOVIE_DATA.filter(m => 
-      m.chinese_title.toLowerCase().includes(q) || 
-      m.english_title.toLowerCase().includes(q)
-    );
-
-    if (matchedMovies.length > 0) {
-      const displayList = matchedMovies.slice(0, 3);
-      appendBotMessage(
-        `為您搜尋到符合「${query}」關鍵字的電影：`,
-        [
-          { text: "🎬 隨便推薦一部", query: "隨便推薦" },
-          { text: "⭐ 評分最高", query: "評分最高" }
-        ],
-        displayList
-      );
-      return;
-    }
-
-    // Fallback response: No intent matching
-    appendBotMessage(
-      `抱歉，我暫時沒聽懂您說的「${query}」。<br><br>您可以嘗試點擊下方的建議查詢，或直接詢問電影名稱（如「霸王別姬」、「泰坦尼克號」）：`,
-      [
-        { text: "🎬 隨便推薦一部", query: "隨便推薦" },
-        { text: "⭐ 評分最高", query: "評分最高" },
-        { text: "🚀 經典科幻片", query: "科幻片" },
-        { text: "❤️ 浪漫愛情片", query: "愛情片" }
-      ]
-    );
-  }
+document.addEventListener('DOMContentLoaded',()=>{
+  appState.movies=(typeof MOVIE_DATA!=='undefined'?MOVIE_DATA:[]).map(normalizeMovie); appState.filteredMovies=[...appState.movies];
+  updateStats();renderFilters();renderTopPicks();applyFilters();initMotion();
+  $('[data-search-input]').addEventListener('input',event=>{appState.searchQuery=event.target.value.trim();applyFilters();});
+  $('[data-sort-select]').addEventListener('change',event=>{appState.sortMode=event.target.value;applyFilters();});
 });
