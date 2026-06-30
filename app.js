@@ -310,14 +310,14 @@ document.addEventListener("DOMContentLoaded", () => {
           <defs>
             <linearGradient id="${gradId}">
               <stop offset="${pct}%" stop-color="#f59e0b" />
-              <stop offset="${pct}%" stop-color="#374151" />
+              <stop offset="${pct}%" stop-color="#e2e8f0" />
             </linearGradient>
           </defs>
           <path fill="url(#${gradId})" d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z"/>
         </svg>
       `;
     }
-    return html + ` <span style="font-size: 0.95rem; font-weight: 600; color: #9ca3af; margin-left: 0.6rem; vertical-align: middle;">${(starsValue * 2).toFixed(1)} / 10 星級</span>`;
+    return html + ` <span style="font-size: 0.95rem; font-weight: 600; color: #475569; margin-left: 0.6rem; vertical-align: middle;">${(starsValue * 2).toFixed(1)} / 10 星級</span>`;
   }
 
   // Helper: Extract minutes integer from duration string ("171 分钟" -> 171)
