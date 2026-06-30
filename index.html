@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DIC 電影資訊 | Scrape Center Complete Catalog</title>
+  <!-- Google Fonts: Outfit & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Background Blur Layers -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <!-- Header Navigation -->
+  <header class="navbar">
+    <div class="navbar-container">
+      <div class="logo">
+        <span class="logo-icon">🎬</span>
+        <span class="logo-text">DIC 電影資訊</span>
+      </div>
+      <div class="downloads-menu">
+        <a href="movies.xlsx" class="btn-download btn-xlsx" download>
+          <span class="btn-icon">📊</span> Excel 下載 (帶海報)
+        </a>
+        <a href="movies.csv" class="btn-download btn-csv" download>
+          <span class="btn-icon">📄</span> CSV 數據
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Wrapper -->
+  <main class="container">
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <h1 class="hero-title">Scrape Center Movie Catalog</h1>
+      <p class="hero-subtitle">已整理的 Top 100 經典電影數據庫，支持實時搜索、篩選與多維度排序。</p>
+      
+      <!-- Stats Dashboard -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label">收錄電影總數</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-avg-score">0.0</div>
+          <div class="stat-label">平均評分</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-categories">0</div>
+          <div class="stat-label">覆蓋類型</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-regions">0</div>
+          <div class="stat-label">國家與地區</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Filters and Search Dashboard -->
+    <section class="control-panel">
+      <!-- Search and Sort Grid -->
+      <div class="controls-top">
+        <div class="search-wrapper">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" placeholder="輸入電影名稱 (中文/英文)..." autocomplete="off">
+        </div>
+        <div class="sort-wrapper">
+          <label for="sort-select">排序方式：</label>
+          <select id="sort-select">
+            <option value="id-asc">預設排序 (ID 遞增)</option>
+            <option value="score-desc">評分最高優先</option>
+            <option value="duration-desc">時長最長優先</option>
+            <option value="duration-asc">時長最短優先</option>
+            <option value="date-desc">最新上映優先</option>
+            <option value="date-asc">經典老片優先</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Categories Filter -->
+      <div class="filter-group">
+        <div class="filter-label">電影類型：</div>
+        <div class="filter-tags" id="category-tags">
+          <button class="tag-btn active" data-category="all">全部</button>
+          <!-- Dynamic category tags will be inserted here -->
+        </div>
+      </div>
+
+      <!-- Regions Filter -->
+      <div class="filter-group">
+        <div class="filter-label">國家/地區：</div>
+        <div class="filter-tags" id="region-tags">
+          <button class="tag-btn active" data-region="all">全部</button>
+          <!-- Dynamic region tags will be inserted here -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Movies Catalog Grid -->
+    <section class="catalog-section">
+      <div class="catalog-header">
+        <h2 class="catalog-title">全部電影</h2>
+        <span class="catalog-count" id="catalog-count-text">顯示 0 部電影</span>
+      </div>
+      <div class="movies-grid" id="movies-grid">
+        <!-- Dynamic movie cards will be inserted here -->
+      </div>
+      <div class="no-results" id="no-results-msg" style="display: none;">
+        <span class="no-results-icon">🎥</span>
+        <h3>沒有符合條件的電影</h3>
+        <p>請嘗試調整您的搜索關鍵字或篩選標籤。</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <p>© 2026 DIC 電影資訊. All Rights Reserved. Data scraped from Scrape Center.</p>
+      <p class="footer-credit">Designed & Built with Antigravity AI pair programmer.</p>
+    </div>
+  </footer>
+
+  <!-- Detail Modal -->
+  <div class="modal-overlay" id="detail-modal">
+    <div class="modal-card">
+      <button class="modal-close" id="modal-close-btn">&times;</button>
+      <div class="modal-body">
+        <div class="modal-cover-wrapper">
+          <img src="" alt="movie cover" id="modal-cover">
+          <span class="modal-score" id="modal-score">0.0</span>
+        </div>
+        <div class="modal-info">
+          <h2 class="modal-title-cn" id="modal-title-cn">電影名稱</h2>
+          <h3 class="modal-title-en" id="modal-title-en">English Title</h3>
+          
+          <div class="modal-meta-row">
+            <span class="meta-item"><strong class="meta-label">ID：</strong><span id="modal-id">0</span></span>
+            <span class="meta-item"><strong class="meta-label">時長：</strong><span id="modal-duration">0 分鐘</span></span>
+            <span class="meta-item"><strong class="meta-label">地區：</strong><span id="modal-region">地區</span></span>
+          </div>
+
+          <div class="modal-meta-row">
+            <span class="meta-item"><strong class="meta-label">上映日期：</strong><span id="modal-release-date">上映日期</span></span>
+          </div>
+
+          <div class="modal-categories" id="modal-categories">
+            <!-- Dynamic modal tags -->
+          </div>
+
+          <div class="modal-rating-stars" id="modal-stars-container">
+            <!-- Dynamic star graphics -->
+          </div>
+          
+          <div class="modal-actions">
+            <a href="#" target="_blank" class="btn-detail-link" id="modal-link-btn">
+              🔗 前往 Scrape Center 詳情頁
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Data & JS Scripts -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
