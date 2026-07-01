@@ -74,12 +74,13 @@
 
       <aside class="right-panel">
         <section class="rail-card top-picks"><div class="rail-title"><h2>Top Picks For You</h2><span>›</span></div><div data-top-picks></div></section>
-        <section class="rail-card streambot">
-          <div class="bot-heading"><span class="bot-logo">✦</span><div><h2>StreamBot <i></i></h2><small>AI Assistant</small></div></div>
+        <section class="rail-card streambot streambot-card">
+          <div class="bot-heading"><span class="bot-logo">✦</span><div><h2>StreamBot <i></i></h2><small>AI Assistant · Local Data</small></div></div>
           <div class="bot-figure" aria-hidden="true"><div class="bot-glow"></div><div class="bot-head"><div class="antenna"></div><div class="bot-face"><i></i><i></i></div></div><div class="bot-body"></div></div>
           <div class="bot-current"><small>CURRENT MOVIE</small><strong data-bot-current-title>尚未選擇電影</strong><span data-bot-current-source>Scrape Center</span></div>
-          <div class="bot-prompts"><button data-bot-action="similar">✦ 推薦類似電影</button><button data-bot-action="genre">⌁ 找同類型電影</button><button data-bot-action="trending">▥ 目前熱門</button></div>
-          <div class="bot-reply" data-bot-reply>Hi！選一部電影，我會幫你分析推薦。</div>
+          <div class="streambot-messages" data-bot-messages aria-live="polite"><div class="bot-message is-bot">嗨！可以問我電影名稱、評分、類型、國家或網站操作方式。</div></div>
+          <div class="bot-prompts streambot-quick" aria-label="快速問題"><button data-bot-question="推薦高分電影">推薦高分電影</button><button data-bot-question="搜尋霸王別姬">搜尋霸王別姬</button><button data-bot-question="目前有幾部電影">目前有幾部電影</button><button data-bot-question="有哪些類型">有哪些類型</button><button data-bot-question="如何下載 Excel">如何下載 Excel</button><button data-bot-question="如何篩選電影">如何篩選電影</button></div>
+          <form class="streambot-input" data-bot-form><label class="sr-only" for="streambot-query">詢問 StreamBot</label><input id="streambot-query" data-bot-input autocomplete="off" placeholder="詢問電影或網站功能…"><button type="submit">Send</button></form>
           <button class="bot-open" data-bot-open-original disabled>開啟目前電影原網址</button>
         </section>
       </aside>
